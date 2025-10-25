@@ -6,37 +6,98 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
-import { Heart, Mail, Lock, Phone, User } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Heart, Mail, Lock, User, Phone, FileText, AlertCircle, CheckCircle } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { signUp, createUsuario } from "@/lib/supabase"
 
 export default function RegisterPage() {
   const [formData, setFormData] = useState({
-    name: "",
+    nome: "",
+    cpf: "",
     email: "",
-    whatsapp: "",
+    telefone: "",
+    tipo_plano: "",
     password: "",
     confirmPassword: ""
   })
   const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState("")
+  const [success, setSucess] = useState(false)
   const router = useRouter()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
+    setError("")
     
-    // Validações básicas
+    // Validações
     if (formData.password !== formData.confirmPassword) {
-      alert("As senhas não coincidem!")
+      setError("As senhas não coincidem")
       setIsLoading(false)
       return
     }
-    
-    // Simular cadastro - em produção, conectar com API
-    setTimeout(() => {
-      router.push("/dashboard")
+
+    if (formData.password.length < 6) {
+      setError("A senha deve ter pelo menos 6 caracteres")
       setIsLoading(false)
-    }, 1500)
+      return
+    }
+
+    if (!formData.tipo_plano) {
+      setError("Selecione um plano")
+      setIsLoading(false)
+      return
+    }
+
+    try {
+      // Criar usuário no Supabase Auth
+      const { data: authData, error: authError } = await signUp(
+        formData.email, 
+        formData.password,
+        {
+          nome: formData.nome,
+          cpf: formData.cpf,
+          telefone: formData.telefone,
+          tipo_plano: formData.tipo_plano
+        }
+      )
+      
+      if (authError) {
+        if (authError.message.includes('already registered')) {
+          setError("Este email já está cadastrado")
+        } else {
+          setError("Erro ao criar conta. Tente novamente.")
+        }
+        setIsLoading(false)
+        return
+      }
+
+      if (authData.user) {
+        // Criar registro na tabela usuarios
+        const { error: userError } = await createUsuario({
+          nome: formData.nome,
+          cpf: formData.cpf,
+          email: formData.email,
+          tipo_plano: formData.tipo_plano as any,
+          status: 'ativo'
+        })
+
+        if (userError) {
+          console.error('Erro ao criar usuário:', userError)
+        }
+
+        setSucess(true)
+        setTimeout(() => {
+          router.push("/login")
+        }, 2000)
+      }
+    } catch (err) {
+      setError("Erro ao criar conta. Tente novamente.")
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -44,6 +105,35 @@ export default function RegisterPage() {
       ...prev,
       [e.target.name]: e.target.value
     }))
+  }
+
+  const formatCPF = (value: string) => {
+    const numbers = value.replace(/\D/g, '')
+    return numbers.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
+  }
+
+  const formatPhone = (value: string) => {
+    const numbers = value.replace(/\D/g, '')
+    return numbers.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3')
+  }
+
+  if (success) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md border-green-200 shadow-2xl">
+          <CardContent className="p-8 text-center">
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <CheckCircle className="w-8 h-8 text-green-600" />
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Cadastro Realizado!</h2>
+            <p className="text-gray-600 mb-4">
+              Sua conta foi criada com sucesso. Você será redirecionado para o login.
+            </p>
+            <div className="animate-spin w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full mx-auto"></div>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (
@@ -59,29 +149,58 @@ export default function RegisterPage() {
               YE VIDA
             </span>
           </Link>
+          <p className="text-gray-600 mt-2">Cadastro de Cliente</p>
         </div>
 
         <Card className="border-blue-100 shadow-2xl">
           <CardHeader className="text-center">
-            <CardTitle className="text-2xl text-gray-900">Criar conta</CardTitle>
+            <CardTitle className="text-2xl text-gray-900">Criar Conta</CardTitle>
             <CardDescription className="text-gray-600">
-              Cadastre-se para acessar nossos serviços de telemedicina
+              Preencha seus dados para acessar nossos serviços de saúde
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-center space-x-2">
+                <AlertCircle className="w-4 h-4 text-red-600" />
+                <span className="text-sm text-red-700">{error}</span>
+              </div>
+            )}
+
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="name" className="text-gray-700">Nome completo</Label>
+                <Label htmlFor="nome" className="text-gray-700">Nome Completo</Label>
                 <div className="relative">
                   <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                   <Input
-                    id="name"
-                    name="name"
+                    id="nome"
+                    name="nome"
                     type="text"
                     placeholder="Seu nome completo"
-                    value={formData.name}
+                    value={formData.nome}
                     onChange={handleChange}
                     className="pl-10 border-blue-200 focus:border-blue-400"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="cpf" className="text-gray-700">CPF</Label>
+                <div className="relative">
+                  <FileText className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                  <Input
+                    id="cpf"
+                    name="cpf"
+                    type="text"
+                    placeholder="000.000.000-00"
+                    value={formData.cpf}
+                    onChange={(e) => {
+                      const formatted = formatCPF(e.target.value)
+                      setFormData(prev => ({ ...prev, cpf: formatted }))
+                    }}
+                    className="pl-10 border-blue-200 focus:border-blue-400"
+                    maxLength={14}
                     required
                   />
                 </div>
@@ -105,20 +224,39 @@ export default function RegisterPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="whatsapp" className="text-gray-700">WhatsApp</Label>
+                <Label htmlFor="telefone" className="text-gray-700">Telefone</Label>
                 <div className="relative">
                   <Phone className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                   <Input
-                    id="whatsapp"
-                    name="whatsapp"
-                    type="tel"
+                    id="telefone"
+                    name="telefone"
+                    type="text"
                     placeholder="(11) 99999-9999"
-                    value={formData.whatsapp}
-                    onChange={handleChange}
+                    value={formData.telefone}
+                    onChange={(e) => {
+                      const formatted = formatPhone(e.target.value)
+                      setFormData(prev => ({ ...prev, telefone: formatted }))
+                    }}
                     className="pl-10 border-blue-200 focus:border-blue-400"
+                    maxLength={15}
                     required
                   />
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="tipo_plano" className="text-gray-700">Plano Desejado</Label>
+                <Select onValueChange={(value) => setFormData(prev => ({ ...prev, tipo_plano: value }))}>
+                  <SelectTrigger className="border-blue-200 focus:border-blue-400">
+                    <SelectValue placeholder="Selecione um plano" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Individual">Individual - R$ 49,90/mês</SelectItem>
+                    <SelectItem value="Familiar">Familiar - R$ 129,00/mês</SelectItem>
+                    <SelectItem value="Fit">Fit - R$ 79,00/mês</SelectItem>
+                    <SelectItem value="Empresarial">Empresarial - Consulte</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-2">
@@ -139,7 +277,7 @@ export default function RegisterPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="confirmPassword" className="text-gray-700">Confirmar senha</Label>
+                <Label htmlFor="confirmPassword" className="text-gray-700">Confirmar Senha</Label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                   <Input
@@ -155,58 +293,14 @@ export default function RegisterPage() {
                 </div>
               </div>
 
-              <div className="flex items-start space-x-2">
-                <input
-                  id="terms"
-                  type="checkbox"
-                  className="rounded border-blue-300 text-blue-600 focus:ring-blue-500 mt-1"
-                  required
-                />
-                <Label htmlFor="terms" className="text-sm text-gray-600">
-                  Aceito os{" "}
-                  <Link href="/terms" className="text-blue-600 hover:text-blue-700">
-                    termos de uso
-                  </Link>{" "}
-                  e{" "}
-                  <Link href="/privacy" className="text-blue-600 hover:text-blue-700">
-                    política de privacidade
-                  </Link>
-                </Label>
-              </div>
-
               <Button
                 type="submit"
                 className="w-full bg-gradient-to-r from-blue-600 to-green-600 hover:from-blue-700 hover:to-green-700"
                 disabled={isLoading}
               >
-                {isLoading ? "Criando conta..." : "Criar conta"}
+                {isLoading ? "Criando conta..." : "Criar Conta"}
               </Button>
             </form>
-
-            <div className="relative">
-              <Separator className="my-4" />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span className="bg-white px-2 text-sm text-gray-500">ou cadastre-se com</span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <Button variant="outline" className="border-blue-200 hover:bg-blue-50">
-                <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
-                  <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                  <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                  <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                  <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-                </svg>
-                Google
-              </Button>
-              <Button variant="outline" className="border-blue-200 hover:bg-blue-50">
-                <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
-                </svg>
-                Facebook
-              </Button>
-            </div>
 
             <div className="text-center">
               <span className="text-gray-600">Já tem uma conta? </span>
